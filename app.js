@@ -303,6 +303,7 @@ function switchLoginMode(mode) {
         tenantForm.style.display = 'block';
     }
 }
+window.switchLoginMode = switchLoginMode;
 
 async function loginLandlord() {
     const password = document.getElementById('landlordPassword').value;
@@ -313,6 +314,7 @@ async function loginLandlord() {
         alert('❌ Incorrect password');
     }
 }
+window.loginLandlord = loginLandlord;
 
 async function loginTenant() {
     const propertyId = document.getElementById('propertySelect').value;
@@ -341,6 +343,7 @@ async function loginTenant() {
     currentUser.propertyId = propertyId;
     await showApp();
 }
+window.loginTenant = loginTenant;
 
 function logout() {
     currentUser = { type: null, tenantId: null, propertyId: null };
