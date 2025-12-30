@@ -4,7 +4,7 @@
 
 // Replace these with your actual Supabase credentials
 const SUPABASE_URL = 'https://fjaxofsasorfbynqustd.supabase.co';
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZqYXhvZnNhc29yZmJ5bnF1c3RkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzA3MDc1MzcsImV4cCI6MjA0NjI4MzUzN30.rOwPVmBLjMXGfvBJGS0iZJXJZDfU3K5j-_T9CkZ1jfE'; // Your anon key
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZqYXhvZnNhc29yZmJ5bnF1c3RkIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2Njg5OTk0NSwiZXhwIjoyMDgyNDc1OTQ1fQ.Y8AEhH3SHYz-BCCoTsJYLs6SdUg1tsUDG4OwLS4Ochs'; // Your anon key
 
 let supabaseClient;
 
