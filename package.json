@@ -1,0 +1,23 @@
+{
+  "name": "ko-rents-netlify-functions",
+  "version": "1.0.0",
+  "description": "Netlify serverless functions for KO-Rents property management",
+  "main": "index.js",
+  "dependencies": {
+    "@sendgrid/mail": "^7.7.0",
+    "node-fetch": "^2.6.11"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "netlify",
+    "serverless",
+    "ko-rents",
+    "invoices",
+    "email"
+  ],
+  "author": "",
+  "license": "MIT"
+}

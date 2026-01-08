@@ -1,0 +1,33 @@
+# Dependencies
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Netlify
+.netlify/
+dist/
+
+# Environment variables (NEVER commit these!)
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Build
+build/
+dist/
+
+# Logs
+logs/
+*.log
+
+# Misc
+.cache/
+.parcel-cache/
