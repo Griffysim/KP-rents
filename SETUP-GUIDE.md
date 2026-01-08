@@ -1,322 +1,382 @@
-# KP-Rents Property Management System
-## Complete Setup & Deployment Guide
+# KO-Rents Netlify Functions - Complete Setup Guide
 
----
+## Quick Start (5 minutes)
 
-## 📋 QUICK START - What You Need To Do
+### Step 1: Create the folder structure in your GitHub repo
 
-### 1. **Update Your GitHub Repository**
-
-Your repo needs THIS folder structure:
-```
-kp-rents/
-├── index.html        (Main HTML file)
-├── app.js            (JavaScript file with Supabase integration)
-└── README.md         (This file - optional)
-```
-
-**Steps:**
-1. Delete the old HTML file from your repo
-2. Upload the NEW `index.html` file
-3. Create a NEW file called `app.js` and paste the JavaScript code
-4. Commit and push to GitHub
-
-### 2. **Redeploy on Netlify**
-
-1. Go to your Netlify dashboard
-2. Go to your KP-Rents site
-3. Click "Deploys" → Click "Trigger deploy"
-4. Wait 1-2 minutes for deployment to complete
-
----
-
-## 🔑 YOUR SUPABASE CREDENTIALS (ALREADY CONFIGURED)
-
-✅ **Supabase URL:** `https://fjaxofsasorfbynqustd.supabase.co`
-
-✅ **Anon Key:** Already pasted in `app.js`
-
-**Database Tables:**
-- properties (8 properties: p1-p8)
-- tenants (6 tenants: t1-t6)
-- payments (empty - ready for use)
-- utilities (empty - ready for use)
-- invoices (empty - ready for use)
-- messages (empty - ready for use)
-- landlord_data (stores your info)
-
----
-
-## 🧪 TEST LOGIN CREDENTIALS
-
-After deployment, test with these credentials:
-
-### **Landlord Login:**
-- Password: `admin123`
-
-### **Tenant Login:**
-- Property: Select `p1` from dropdown
-- Password: `jones123`
-
----
-
-## 📂 Project Structure Explained
+Your repo should look like this:
 
 ```
-index.html
-├── HTML Structure
-├── CSS Styling (embedded)
-└── Script tag that loads app.js
-
-app.js
-├── Supabase Configuration
-├── Database Functions (CRUD operations)
-├── UI Functions (login, modals, etc.)
-├── Landlord Features (dashboard, tenants, invoices, payments)
-└── Tenant Features (overview, readings, messages, invoices)
+your-repo-root/
+├── index.html
+├── app.js
+├── netlify/
+│   └── functions/
+│       ├── generate-invoice.js
+│       ├── send-email.js
+│       └── package.json
+└── .gitignore
 ```
 
----
+### Step 2: Copy the three function files
 
-## ✅ FILE CONTENTS SUMMARY
+Copy these files from the artifact links into your `netlify/functions/` directory:
 
-### **index.html**
-- Login screen (Landlord/Tenant modes)
-- Responsive UI with cards, tables, modals
-- All HTML elements for dashboard, settings, etc.
-- Loads `app.js` at the bottom
-- Supabase CDN script included
+1. **`generate-invoice.js`** - Uses Perplexity API to create professional invoices
+2. **`send-email.js`** - Uses SendGrid to email invoices to tenants
+3. **`package.json`** - Dependencies for the functions
 
-### **app.js**
-- Initializes Supabase on page load
-- All functions to read/write data to Supabase
-- Login logic (password verification)
-- Dashboard rendering
-- Invoice generation
-- Payment recording
-- Utility readings submission
-- Message handling
-- Admin settings management
+### Step 3: Configure Environment Variables in Netlify
 
----
-
-## 🚀 HOW IT WORKS
-
-### **Login Flow**
-1. User selects Landlord or Tenant
-2. For Landlord: Enters password (admin123)
-3. For Tenant: Selects property and enters password
-4. JavaScript validates credentials from Supabase
-5. If correct → Loads dashboard
-
-### **Data Flow**
-1. User submits form (e.g., "Add Tenant")
-2. JavaScript collects form data
-3. Calls Supabase function (e.g., `addNewTenant()`)
-4. Supabase inserts into database
-5. JavaScript refreshes UI to show new data
-6. Success alert displayed
-
-### **Multi-Tenant System**
-- Each property (p1, p2, etc.) can have ONE tenant
-- Tenants only see their own property and data
-- Landlord sees all properties and tenants
-- Payments, utilities, invoices linked by tenant_id
-
----
-
-## 🔐 SECURITY NOTES
-
-### **Current Setup (Development)**
-- Landlord password: plain text (admin123)
-- Tenant passwords: stored in database as plain text
-- RLS policies: Allow full access with anon key
-
-### **For Production**
-When ready to go live:
-1. Implement proper authentication (Supabase Auth)
-2. Hash passwords with bcrypt
-3. Enable Row-Level Security (RLS) policies
-4. Use environment variables for secrets
-5. Add rate limiting
-
----
-
-## 🛠️ TROUBLESHOOTING
-
-### **"Supabase connection failed"**
-- ✅ Check browser console (F12 → Console)
-- ✅ Verify SUPABASE_URL in app.js
-- ✅ Verify SUPABASE_KEY in app.js
-- ✅ Check Netlify deployment (redeploy if needed)
-
-### **"No properties showing in login"**
-- ✅ Check that properties table has data
-- ✅ Look at browser console for errors
-- ✅ Check network tab (F12 → Network) for API calls
-
-### **"Login not working"**
-- ✅ Verify you're using correct credentials:
-  - Landlord: password `admin123`
-  - Tenant: property `p1`, password `jones123`
-- ✅ Check browser console for error messages
-- ✅ Ensure tenants table has data linked to properties
-
-### **"Cannot record payment / add tenant"**
-- ✅ Check browser console (F12 → Console) for errors
-- ✅ Verify Supabase tables have write permissions
-- ✅ Check network tab for failed API requests
-
----
-
-## 📊 DATABASE RELATIONSHIPS
+1. Go to **Netlify Dashboard** → Select your site
+2. Click **Site settings** → **Environment variables**
+3. Add these environment variables:
 
 ```
-properties (id, name, base_rent)
-    ↓ (one-to-one)
-tenants (id, property_id, name, monthly_rent, tenant_password, email, phone)
-    ↓ (one-to-many)
-payments (id, tenant_id, date, amount, method, note)
-utilities (id, tenant_id, date, electricity_reading, water_reading, note)
-invoices (id, tenant_id, period_start, period_end, total, created_at)
-messages (id, tenant_id, date, subject, body, resolved)
-
-landlord_data (id='main', name, email, address, phone, bank_account)
+PERPLEXITY_API_KEY = [Your Perplexity API Key]
+SENDGRID_API_KEY = [Your SendGrid API Key]
+SENDGRID_FROM_EMAIL = invoices@yourdomain.com
+LANDLORD_REPLY_EMAIL = landlord@yourdomain.com
 ```
 
----
+⚠️ **Replace the bracketed values with your actual keys**
 
-## 📝 FEATURES OVERVIEW
+### Step 4: Deploy
 
-### **Landlord Dashboard**
-- **Dashboard Tab:** Overview of all properties, occupancy, payment status
-- **Tenants Tab:** Manage tenants, record payments, edit details
-- **Utilities Tab:** View all utility readings submitted by tenants
-- **Invoices Tab:** Generate invoices for tenants
-- **Messages Tab:** Receive and respond to tenant issues
-- **Settings Tab:** Store landlord contact info for invoices
+1. Commit and push to GitHub:
+```bash
+git add netlify/
+git commit -m "Add Netlify functions for invoice generation and email"
+git push
+```
 
-### **Tenant Portal**
-- **Overview Tab:** See property details and rent status
-- **Submit Readings Tab:** Submit meter readings (electricity, water)
-- **Invoices Tab:** View invoices generated by landlord
-- **Report Issue Tab:** Send messages to landlord about issues
+2. Netlify will automatically:
+   - Detect the functions
+   - Install dependencies from package.json
+   - Deploy the serverless functions
 
----
+3. Your functions will be available at:
+   - `/.netlify/functions/generate-invoice`
+   - `/.netlify/functions/send-email`
 
-## 🔄 WORKFLOW EXAMPLES
+### Step 5: Test
 
-### **Recording a Rent Payment**
-1. Landlord logs in
-2. Go to "Tenants" tab
-3. Click "Record Payment" on a tenant
-4. Fill: Date, Amount, Payment Method
-5. Click "Record Payment"
-6. Payment saved to database
-7. Dashboard updates: "Paid This Month" count increases
-
-### **Tenant Submitting a Reading**
-1. Tenant logs in
-2. Go to "Submit Readings" tab
-3. Fill: Date, Electricity Reading, Water Reading
-4. Click "Submit Reading"
-5. Reading saved to database
-6. Appears in Landlord's "Utilities" tab
-
-### **Generating an Invoice**
-1. Landlord logs in
-2. Go to "Invoices" tab
-3. Select a tenant from dropdown
-4. Click "Generate New Invoice"
-5. Fill: Period dates, optional charges
-6. Click "Generate Invoice"
-7. Invoice saved, appears in tenant's portal
-8. Landlord can "View/Print" it
+In your KO-Rents app:
+1. Log in as Landlord
+2. Go to **Tenants** tab
+3. Click "Generate Invoice" on a tenant
+4. Fill in the billing period
+5. Click "Generate & Send Invoice"
+6. Check the tenant's email for the invoice
 
 ---
 
-## 🎯 NEXT STEPS
+## Getting Your API Keys
 
-### **Immediate (This Week)**
-1. ✅ Push code to GitHub
-2. ✅ Redeploy on Netlify
-3. ✅ Test login with credentials above
-4. ✅ Open browser console to verify no errors
+### Perplexity API Key
 
-### **Short Term (This Month)**
-1. Add real tenant data to database
-2. Start recording payments
-3. Generate first invoices
-4. Test utility readings submission
+You already have this from your Perplexity account. If not:
 
-### **Medium Term (Future)**
-1. Implement Supabase Auth for better security
-2. Add email notifications when invoices are generated
-3. Add payment tracking dashboard
-4. Generate reports/analytics
+1. Go to https://www.perplexity.ai/
+2. Sign in to your account
+3. Go to **Settings** → **API** (the </> icon)
+4. Click **Generate API Key**
+5. Copy the key (starts with `pplx-`)
+6. Keep it secret! Never commit to GitHub
 
-### **Long Term (Production)**
-1. Implement Row-Level Security (RLS)
-2. Add backup strategy
-3. Set up monitoring
-4. Add audit logs
-5. Implement password reset functionality
+### SendGrid API Key (Free Tier Available)
 
----
-
-## 📞 SUPPORT
-
-If something isn't working:
-
-1. **Check browser console** (F12 → Console)
-   - Look for red error messages
-   - Copy and search error online
-
-2. **Check Netlify logs** (Settings → Functions)
-   - May show deployment errors
-
-3. **Verify Supabase database** (Settings → Editor)
-   - Check tables exist
-   - Verify RLS policies are set to allow development access
-
-4. **Redeploy** (Netlify Deploys → Trigger deploy)
-   - Sometimes fixes issues
+1. Go to https://sendgrid.com
+2. Sign up or log in
+3. Go to **Settings** → **API Keys**
+4. Click **Create API Key**
+5. Choose **Full Access** (or **Restricted Access** if you prefer)
+6. Copy the key
+7. **Verify a Sender Email**:
+   - Go to **Settings** → **Sender Authentication** → **Single Sender Verification**
+   - Add and verify an email address (use your landlord email or a custom domain)
+   - Use this verified email as `SENDGRID_FROM_EMAIL`
 
 ---
 
-## 📄 FILE SIZES
+## File Descriptions
 
-- `index.html`: ~30 KB (includes all CSS)
-- `app.js`: ~40 KB (all JavaScript)
-- **Total:** ~70 KB (very fast loading)
+### generate-invoice.js
+
+**What it does:**
+- Receives tenant, property, rent, and utilities data from your app
+- Calls the Perplexity API (Sonar model) to generate a professional invoice
+- Returns the formatted invoice text
+
+**Perplexity API Used:** `sonar` (you can upgrade to `sonar-pro` for web-grounded content)
+
+**Inputs:**
+```javascript
+{
+  tenantName: "John Doe",
+  tenantEmail: "john@example.com",
+  propertyName: "KO Gardens",
+  unitNumber: "Unit 4B",
+  billingPeriod: "2026-01-01 to 2026-01-31",
+  dueDate: "2026-02-07",
+  baseRent: 8500,
+  utilities: [
+    { name: "Water", amount: 350.75 },
+    { name: "Electricity", amount: 820.10 }
+  ],
+  landlord: {
+    name: "Simon",
+    email: "simon@ko-rents.com",
+    address: "123 Main St, Cape Town",
+    phone: "021 555 0000",
+    bank_account: "FNB 123456789"
+  },
+  additionalText: "Late payment fee: 100"
+}
+```
+
+**Output:**
+```javascript
+{
+  invoiceText: "Dear John Doe...\n\nInvoice for January 2026...",
+  totalDue: 9670.85,
+  utilities: [...]
+}
+```
+
+### send-email.js
+
+**What it does:**
+- Receives recipient email, subject, and invoice text
+- Sends the email via SendGrid
+- Returns success/error status
+
+**Email Provider:** SendGrid (recommended, free tier: 100 emails/day)
+
+**Inputs:**
+```javascript
+{
+  to: "john@example.com",
+  subject: "Invoice - KO Gardens - 2026-01-01 to 2026-01-31",
+  body: "Dear John Doe...\n\nInvoice for January 2026...",
+  tenantName: "John Doe",
+  landlordName: "Simon"
+}
+```
+
+**Output:**
+```javascript
+{
+  ok: true,
+  message: "Email sent to john@example.com"
+}
+```
+
+### package.json
+
+**What it does:**
+- Tells Netlify to install SendGrid and node-fetch packages
+- Required for functions to work
+
+**Dependencies:**
+- `@sendgrid/mail@^7.7.0` - SendGrid email API
+- `node-fetch@^2.6.11` - Fetch library for Node.js
 
 ---
 
-## ✨ KEY FEATURES
+## Troubleshooting
 
-✅ Responsive design (works on mobile, tablet, desktop)
-✅ Dark text on light background (easy to read)
-✅ Color-coded status badges (paid/unpaid)
-✅ Invoice printing capability
-✅ Real-time data updates
-✅ Multiple user roles (landlord/tenant)
-✅ Secure password authentication
-✅ Full CRUD operations
-✅ Error handling and user feedback
+### Error: "PERPLEXITY_API_KEY undefined"
+
+**Solution:** Make sure you've:
+1. Added `PERPLEXITY_API_KEY` to Netlify environment variables
+2. Redeployed the site after adding the variable
+3. Used the exact correct API key (no extra spaces or quotes)
+
+Check Netlify logs:
+- Go to **Site** → **Logs** → **Function logs**
+
+### Error: "Email service not configured"
+
+**Solution:** Make sure you've:
+1. Added `SENDGRID_API_KEY` to Netlify environment variables
+2. Verified a sender email in SendGrid
+3. Set `SENDGRID_FROM_EMAIL` to your verified email
+
+### Invoices not generating
+
+**Solution:** Check the function logs:
+1. Open Netlify dashboard
+2. Go to **Functions** tab
+3. Click **generate-invoice** to view logs
+4. Look for error messages
+
+### Emails not sending
+
+**Solution:** Check SendGrid:
+1. Go to https://app.sendgrid.com/
+2. Click **Mail Send** to see email history
+3. Look for bounces, failures, or blocks
+4. Verify the sender email is verified (not in review)
 
 ---
 
-## 🎓 LEARNING RESOURCES
+## Advanced: Alternative Email Providers
 
-If you want to understand the code better:
+### Option A: Resend (EU-Friendly, Modern)
 
-1. **Supabase Docs:** https://supabase.com/docs
-2. **JavaScript Async/Await:** MDN documentation
-3. **HTML/CSS:** W3Schools
-4. **REST APIs:** How Supabase sends data
+Replace `send-email.js` with:
+
+```javascript
+import { Resend } from 'resend';
+
+const resend = new Resend(process.env.RESEND_API_KEY);
+
+exports.handler = async (event) => {
+  try {
+    const { to, subject, body: emailBody } = JSON.parse(event.body || '{}');
+
+    if (!to || !subject || !emailBody) {
+      return { statusCode: 400, body: JSON.stringify({ error: 'Missing fields' }) };
+    }
+
+    const response = await resend.emails.send({
+      from: process.env.RESEND_FROM_EMAIL || 'invoices@ko-rents.com',
+      to,
+      subject,
+      text: emailBody
+    });
+
+    return {
+      statusCode: 200,
+      body: JSON.stringify({ ok: true, messageId: response.id })
+    };
+  } catch (err) {
+    return {
+      statusCode: 500,
+      body: JSON.stringify({ error: err.message })
+    };
+  }
+};
+```
+
+**Setup:**
+1. Sign up at https://resend.com
+2. Create API key
+3. Update `package.json` to include `"resend": "^1.0.0"`
+4. Set environment variables:
+   - `RESEND_API_KEY`
+   - `RESEND_FROM_EMAIL`
+
+### Option B: Mailgun (Reliable, Enterprise-Ready)
+
+Similar approach to SendGrid. Requires:
+- `mailgun-js` package
+- `MAILGUN_API_KEY` environment variable
+- `MAILGUN_DOMAIN` environment variable
 
 ---
 
-**Last Updated:** December 28, 2025
-**System Version:** 1.0
-**Status:** ✅ Ready for Deployment
+## Security Best Practices
+
+✅ **Do:**
+- Store API keys ONLY in Netlify environment variables
+- Never commit API keys to GitHub
+- Use separate SendGrid keys for different environments
+- Verify sender emails are legitimate
+- Log important events (email sent, invoice generated)
+
+❌ **Don't:**
+- Hard-code API keys in functions
+- Share API keys via email or chat
+- Use production API keys in development
+- Forget to verify sender emails in SendGrid
+
+---
+
+## Monitoring & Logs
+
+### View Function Logs
+
+1. Netlify Dashboard → Your Site
+2. **Logs** → **Function logs**
+3. Filter by function name: `generate-invoice` or `send-email`
+4. Check timestamps and error messages
+
+### View SendGrid Email Status
+
+1. Go to https://app.sendgrid.com
+2. **Mail Send** → View sent emails
+3. Click on email to see delivery status
+4. Check bounce rates, failures, bounces
+
+### Perplexity API Usage
+
+1. Go to https://www.perplexity.ai/
+2. Account Settings → API
+3. View API usage and costs
+4. Monitor usage vs. quota
+
+---
+
+## Costs
+
+### Perplexity API
+- **Sonar**: $0.003 per 1K input tokens, $0.01 per 1K output tokens
+- **Sonar Pro**: $0.015 per 1K input tokens, $0.05 per 1K output tokens
+- Typical invoice generation: ~1-3 cents per invoice
+
+### SendGrid
+- **Free tier**: 100 emails/day (perfect for testing)
+- **Paid**: $19.95/month for 40K emails/month
+- Usually $0.0005-0.001 per email at scale
+
+### Netlify Functions
+- **Free tier**: 125K invocations/month (plenty for property management)
+- **Paid**: $0.32 per 1M invocations
+
+---
+
+## Support & Debugging
+
+**If something breaks:**
+
+1. Check Netlify function logs
+2. Test with curl or Postman:
+
+```bash
+curl -X POST https://your-site.netlify.app/.netlify/functions/generate-invoice \
+  -H "Content-Type: application/json" \
+  -d '{
+    "tenantName": "Test",
+    "tenantEmail": "test@example.com",
+    "propertyName": "Test Property",
+    "unitNumber": "1",
+    "billingPeriod": "Jan 2026",
+    "dueDate": "2026-02-07",
+    "baseRent": 5000,
+    "utilities": [],
+    "landlord": {}
+  }'
+```
+
+3. Check SendGrid bounce list for email issues
+4. Verify Perplexity API key is correct
+
+---
+
+## Next Steps
+
+After deployment:
+
+1. ✅ Test invoice generation with a test tenant
+2. ✅ Verify email delivery
+3. ✅ Check invoice formatting
+4. ✅ Customize additional charges (in app.js if needed)
+5. ✅ Set up monitoring for function logs
+6. ✅ Monitor Perplexity API usage
+7. ✅ Scale SendGrid plan as needed (as you add more tenants)
+
+---
+
+**Questions? Check the app.js comments or Netlify documentation: https://docs.netlify.com/functions/overview/**
