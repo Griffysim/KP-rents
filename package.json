@@ -1,0 +1,16 @@
+{
+  "name": "ko-rents",
+  "version": "1.0.0",
+  "description": "AI-powered property management system for South African landlords",
+  "private": true,
+  "main": "index.html",
+  "scripts": {
+    "build": "echo \"no build step needed\""
+  },
+  "dependencies": {
+    "node-fetch": "^3.3.2",
+    "@sendgrid/mail": "^8.1.0"
+  },
+  "author": "Karen Pepper",
+  "license": "MIT"
+}
