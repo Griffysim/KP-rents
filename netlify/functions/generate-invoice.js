@@ -1,9 +1,4 @@
-let fetch;
-
-(async () => {
-  const nodeFetch = await import('node-fetch');
-  fetch = nodeFetch.default;
-})();
+const fetch = require('node-fetch');
 
 const PPLX_URL = 'https://api.perplexity.ai/chat/completions';
 
@@ -31,7 +26,6 @@ exports.handler = async (event) => {
       (sum, u) => sum + (Number(u.amount) || 0),
       0
     );
-
     const totalDue = Number(baseRent || 0) + utilitiesTotal;
 
     const systemPrompt =
@@ -113,17 +107,24 @@ Make it warm but professional, suitable for South African rental context.
 
     return {
       statusCode: 200,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      },
       body: JSON.stringify({
         invoiceText: content,
         totalDue,
         utilities
       })
     };
-
   } catch (err) {
     console.error('Function error:', err);
     return {
       statusCode: 500,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      },
       body: JSON.stringify({ error: err.message })
     };
   }
