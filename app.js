@@ -1040,7 +1040,7 @@ async function loadInvoicesTab() {
 
     html += `
       <div class="invoice-card">
-        <h4>Invoice #${invoice.id.substring(0, 8).toUpperCase()}</h4>
+        <h4>Invoice #${invoice.id.replace('inv_', 'INV-')}</h4>
         <p><strong>Tenant:</strong> ${tenant?.name || 'N/A'}</p>
         <p><strong>Period:</strong> ${invoice.period_start} to ${invoice.period_end}</p>
         <p><strong>Total:</strong> R ${invoice.total.toLocaleString()}</p>
@@ -1071,7 +1071,7 @@ async function resendInvoice(invoiceId) {
   try {
     await sendInvoiceEmail({
       to: tenant.email,
-      subject: `Invoice #${invoiceId.substring(0, 8).toUpperCase()} - Resend`,
+      subject: `Invoice #${invoiceId.replace('inv_', 'INV-')} - Resend`,
       body: invoice.content,
       tenantName: tenant.name,
       landlordName: landlord.name
@@ -1398,7 +1398,7 @@ async function loadTenantInvoices() {
   tenantInvoices.forEach(inv => {
     html += `
       <div class="invoice-card">
-        <h4>Invoice #${inv.id.substring(0, 8).toUpperCase()}</h4>
+        <h4>Invoice #${inv.id.replace('inv_', 'INV-')}</h4>
         <p><strong>Period:</strong> ${inv.period_start} to ${inv.period_end}</p>
         <p><strong>Total Due:</strong> R ${inv.total.toLocaleString()}</p>
         <p><strong>Generated:</strong> ${inv.created_at}</p>
