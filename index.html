@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>KP-Rents Property Management</title>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <style>
     * {
       margin: 0;
@@ -1164,20 +1165,13 @@
 <!-- MODAL: REPORT DETAILS -->
 <!-- ============================================ -->
 <div id="reportDetailsModal" class="modal">
-  <div class="modal-content" style="max-width: 900px; max-height: 90vh; overflow-y: auto;">
-    <div class="modal-header">
-      <h2>Report Details</h2>
-      <button class="close-btn" onclick="closeModal('reportDetailsModal')">&times;</button>
+  <div class="modal-content" style="max-width:860px; max-height:90vh; overflow-y:auto;">
+    <div style="display:flex; justify-content:space-between; align-items:center; padding:20px 24px; border-bottom:1px solid #eee;">
+      <h3 id="reportModalTitle" style="margin:0; color:#333;">Report</h3>
+      <button onclick="closeModal('reportDetailsModal')" style="background:none; border:none; font-size:24px; cursor:pointer; color:#aaa;">×</button>
     </div>
-
-    <div class="modal-body" style="padding: 20px;">
-      <div id="reportDetailsContent">
-        <p>Loading report...</p>
-      </div>
-    </div>
-
-    <div class="modal-footer" style="padding: 20px; border-top: 1px solid #eee;">
-      <button class="btn-secondary" onclick="closeModal('reportDetailsModal')">Close</button>
+    <div id="reportDetailsContent" style="padding:24px;">
+      <p>Loading report...</p>
     </div>
   </div>
 </div>

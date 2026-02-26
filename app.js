@@ -1598,274 +1598,454 @@ async function addCustomCategory(categoryName) {
 }
 
 // ============================================
-// REPORTING FUNCTIONS
+// REPORTS — DATA BUILDER
 // ============================================
 
-async function generateIncomeReport(filters = {}) {
+let currentReportData = null; // held for PDF/TXT download
+
+function buildReportData({ properties, tenants, payments, expenses }) {
+  const totalIncome    = payments.reduce((s, p) => s + (p.amount || 0), 0);
+  const totalExpenses  = expenses.reduce((s, e) => s + (e.amount || 0), 0);
+  const netProfit      = totalIncome - totalExpenses;
+  const profitMargin   = totalIncome > 0 ? ((netProfit / totalIncome) * 100).toFixed(1) : 0;
+
+  // Income by property
+  const incomeByProperty = {};
+  properties.forEach(p => { incomeByProperty[p.name] = 0; });
+  payments.forEach(pay => {
+    const tenant = tenants.find(t => t.id === pay.tenant_id);
+    const prop   = properties.find(p => p.id === tenant?.property_id);
+    if (prop) incomeByProperty[prop.name] = (incomeByProperty[prop.name] || 0) + pay.amount;
+  });
+
+  // Income by tenant
+  const incomeByTenant = {};
+  payments.forEach(pay => {
+    const tenant = tenants.find(t => t.id === pay.tenant_id);
+    if (tenant) incomeByTenant[tenant.name] = (incomeByTenant[tenant.name] || 0) + pay.amount;
+  });
+
+  // Expenses by category
+  const expenseByCategory = {};
+  expenses.forEach(exp => {
+    expenseByCategory[exp.category] = (expenseByCategory[exp.category] || 0) + exp.amount;
+  });
+
+  // Expenses by property
+  const expenseByProperty = {};
+  expenses.forEach(exp => {
+    const prop    = properties.find(p => p.id === exp.property_id);
+    const name    = prop ? prop.name : 'General';
+    expenseByProperty[name] = (expenseByProperty[name] || 0) + exp.amount;
+  });
+
+  // Per-property profitability
+  const propertyProfitability = properties.map(prop => {
+    const tenant  = tenants.find(t => t.property_id === prop.id);
+    const income  = incomeByProperty[prop.name] || 0;
+    const expAmt  = expenseByProperty[prop.name] || 0;
+    return {
+      name:          prop.name,
+      tenant:        tenant?.name || 'Vacant',
+      monthlyRent:   prop.monthly_rent || 0,
+      totalIncome:   income,
+      totalExpenses: expAmt,
+      netProfit:     income - expAmt
+    };
+  });
+
+  return {
+    dateGenerated: new Date().toLocaleDateString('en-ZA'),
+    totalIncome, totalExpenses, netProfit, profitMargin,
+    paymentCount:   payments.length,
+    expenseCount:   expenses.length,
+    propertyCount:  properties.length,
+    tenantCount:    tenants.length,
+    incomeByProperty, incomeByTenant,
+    expenseByCategory, expenseByProperty,
+    propertyProfitability
+  };
+}
+
+// ============================================
+// REPORTS — AI PROMPT BUILDER
+// ============================================
+
+function buildReportPrompt(type, data, landlord) {
+  const fmt = v => `R${Number(v).toLocaleString('en-ZA', { minimumFractionDigits: 2 })}`;
+  const listObj = obj => Object.entries(obj)
+    .map(([k, v]) => `  - ${k}: ${fmt(v)}`).join('\n') || '  None recorded';
+
+  const header = `
+LANDLORD : ${landlord.name}
+GENERATED: ${data.dateGenerated}${data.dateRange ? `\nRANGE    : ${data.dateRange}` : ''}
+PROPERTIES: ${data.propertyCount}  |  TENANTS: ${data.tenantCount}
+`.trim();
+
+  const summary = `
+FINANCIAL SUMMARY
+  Total Income   : ${fmt(data.totalIncome)}
+  Total Expenses : ${fmt(data.totalExpenses)}
+  Net Profit     : ${fmt(data.netProfit)}
+  Profit Margin  : ${data.profitMargin}%
+`.trim();
+
+  const incomeSection = `
+INCOME BY PROPERTY
+${listObj(data.incomeByProperty)}
+
+INCOME BY TENANT
+${listObj(data.incomeByTenant)}
+`.trim();
+
+  const expenseSection = `
+EXPENSES BY CATEGORY
+${listObj(data.expenseByCategory)}
+
+EXPENSES BY PROPERTY
+${listObj(data.expenseByProperty)}
+`.trim();
+
+  const propertySection = data.propertyProfitability.map(p => `
+  ${p.name}  (Tenant: ${p.tenant})
+    Monthly Rent   : ${fmt(p.monthlyRent)}
+    Total Income   : ${fmt(p.totalIncome)}
+    Total Expenses : ${fmt(p.totalExpenses)}
+    Net Profit     : ${fmt(p.netProfit)}
+`.trim()).join('\n\n');
+
+  const sections = {
+    accounting: `${header}\n\n${summary}\n\n${incomeSection}\n\n${expenseSection}\n\nPROPERTY PROFITABILITY\n${propertySection}`,
+    income:     `${header}\n\n${incomeSection}`,
+    expenses:   `${header}\n\n${expenseSection}`,
+    properties: `${header}\n\nPROPERTY PROFITABILITY\n${propertySection}`
+  };
+
+  return `You are a professional property management accountant for a South African landlord.
+Generate a clean, formal report using ONLY the data below. 
+Use plain text — no markdown, no asterisks, no bullet symbols. 
+Use dashes and equals signs for section borders.
+Add a brief professional analysis and 2-3 actionable recommendations at the end.
+Return ONLY the report text.
+
+RAW DATA:
+${sections[type]}`;
+}
+
+// ============================================
+// REPORTS — PERPLEXITY API CALL
+// ============================================
+
+async function generateReportWithAI(type, data, landlord) {
+  const prompt = buildReportPrompt(type, data, landlord);
+
+  const response = await fetch('https://api.perplexity.ai/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${PERPLEXITY_API_KEY}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      model: 'sonar',
+      messages: [
+        {
+          role: 'system',
+          content: 'You are a professional property management accountant. Generate clean formal reports in plain text only. No markdown.'
+        },
+        { role: 'user', content: prompt }
+      ],
+      max_tokens: 2000,
+      temperature: 0.1
+    })
+  });
+
+  if (!response.ok) {
+    const err = await response.json();
+    throw new Error(err.error?.message || 'Perplexity API error');
+  }
+
+  const result = await response.json();
+  return result.choices[0].message.content;
+}
+
+// ============================================
+// REPORTS — UI: TAB LOADER
+// ============================================
+
+async function loadReportsTab() {
+  const today     = new Date().toISOString().split('T')[0];
+  const firstOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1)
+    .toISOString().split('T')[0];
+
+  const container = document.getElementById('reportsContainer');
+  container.innerHTML = `
+    <p style="color:#666; margin-bottom:20px;">
+      Select a date range, then choose a report type. Reports are AI-formatted and downloadable as PDF.
+    </p>
+
+    <!-- DATE RANGE BAR -->
+    <div style="background:white; border-radius:10px; padding:20px;
+                box-shadow:0 2px 8px rgba(0,0,0,0.08); margin-bottom:24px;
+                display:flex; flex-wrap:wrap; gap:16px; align-items:flex-end;">
+
+      <div style="flex:1; min-width:140px;">
+        <label style="display:block; font-size:12px; font-weight:600;
+                      color:#666; margin-bottom:6px;">From Date</label>
+        <input type="date" id="reportStartDate" value="${firstOfMonth}"
+               style="width:100%; padding:10px; border:1px solid #ddd;
+                      border-radius:5px; font-size:14px;">
+      </div>
+
+      <div style="flex:1; min-width:140px;">
+        <label style="display:block; font-size:12px; font-weight:600;
+                      color:#666; margin-bottom:6px;">To Date</label>
+        <input type="date" id="reportEndDate" value="${today}"
+               style="width:100%; padding:10px; border:1px solid #ddd;
+                      border-radius:5px; font-size:14px;">
+      </div>
+
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <button onclick="setReportRange('thisMonth')"
+                style="padding:10px 14px; background:#f0f0f0; border:none;
+                       border-radius:5px; cursor:pointer; font-size:12px; font-weight:600; color:#555;">
+          This Month
+        </button>
+        <button onclick="setReportRange('last3')"
+                style="padding:10px 14px; background:#f0f0f0; border:none;
+                       border-radius:5px; cursor:pointer; font-size:12px; font-weight:600; color:#555;">
+          Last 3 Months
+        </button>
+        <button onclick="setReportRange('thisYear')"
+                style="padding:10px 14px; background:#f0f0f0; border:none;
+                       border-radius:5px; cursor:pointer; font-size:12px; font-weight:600; color:#555;">
+          This Year
+        </button>
+        <button onclick="setReportRange('all')"
+                style="padding:10px 14px; background:#f0f0f0; border:none;
+                       border-radius:5px; cursor:pointer; font-size:12px; font-weight:600; color:#555;">
+          All Time
+        </button>
+      </div>
+    </div>
+
+    <!-- REPORT CARDS -->
+    <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:20px;">
+      ${[
+        { type:'accounting', icon:'📊', label:'Full Accounting',   desc:'Income, expenses, net profit and property breakdown.',  color:'#667eea' },
+        { type:'income',     icon:'💰', label:'Income & Payments', desc:'All rent payments by tenant and property.',             color:'#4caf50' },
+        { type:'expenses',   icon:'📉', label:'Expense Report',    desc:'All expenses by category and property.',               color:'#f44336' },
+        { type:'properties', icon:'🏠', label:'Property Summary',  desc:'Per-property income, costs and profitability.',        color:'#ff9800' }
+      ].map(r => `
+        <div style="background:white; border-radius:10px; padding:22px;
+                    box-shadow:0 2px 8px rgba(0,0,0,0.08); border-top:4px solid ${r.color};">
+          <div style="font-size:30px; margin-bottom:10px;">${r.icon}</div>
+          <h3 style="margin:0 0 8px; color:#333; font-size:15px;">${r.label}</h3>
+          <p style="color:#888; font-size:13px; margin-bottom:16px; line-height:1.5;">${r.desc}</p>
+          <button onclick="generateReport('${r.type}')"
+                  style="width:100%; padding:10px; background:${r.color}; color:white;
+                         border:none; border-radius:5px; cursor:pointer; font-weight:bold; font-size:13px;">
+            Generate Report
+          </button>
+        </div>
+      `).join('')}
+    </div>`;
+}
+
+// ============================================
+// REPORTS — UI: GENERATE & DISPLAY
+// ============================================
+
+const REPORT_TITLES = {
+  accounting: '📊 Full Accounting Report',
+  income:     '💰 Income & Payments Report',
+  expenses:   '📉 Expense Report',
+  properties: '🏠 Property Summary Report'
+};
+
+async function generateReport(type) {
+  // Read date range
+  const startDate = document.getElementById('reportStartDate')?.value || null;
+  const endDate   = document.getElementById('reportEndDate')?.value   || null;
+  const rangeLabel = (startDate && endDate)
+    ? `${startDate} to ${endDate}`
+    : 'All Time';
+
+  document.getElementById('reportModalTitle').textContent =
+    `${REPORT_TITLES[type] || 'Report'} — ${rangeLabel}`;
+
+  document.getElementById('reportDetailsContent').innerHTML = `
+    <div style="text-align:center; padding:50px 20px;">
+      <div style="font-size:44px; margin-bottom:16px;">⏳</div>
+      <p style="color:#666; font-size:15px;">
+        Gathering data for <strong>${rangeLabel}</strong> and generating report with AI...<br>
+        <small style="color:#aaa;">This takes 10–20 seconds</small>
+      </p>
+    </div>`;
+  openModal('reportDetailsModal');
+
   try {
-    let query = supabaseClient
-      .from('payments')
-      .select('*, tenants(name, property_id), properties(name)');
+    const filters = { startDate, endDate };
 
-    if (filters.propertyId) {
-      query = query.eq('property_id', filters.propertyId);
-    }
-    if (filters.tenantId) {
-      query = query.eq('tenant_id', filters.tenantId);
-    }
-    if (filters.startDate) {
-      query = query.gte('date', filters.startDate);
-    }
-    if (filters.endDate) {
-      query = query.lte('date', filters.endDate);
-    }
+    const [properties, tenants, allPayments, allExpenses, landlord] = await Promise.all([
+      getProperties(), getTenants(), getPayments(), getExpenses(filters), getLandlordData()
+    ]);
 
-    const { data, error } = await query.order('date', { ascending: false });
-    if (error) throw error;
-
-    // Calculate totals
-    const totalIncome = data.reduce((sum, p) => sum + (p.amount || 0), 0);
-    const byProperty = {};
-    const byTenant = {};
-
-    data.forEach(payment => {
-      const propName = payment.properties?.name || 'Unknown';
-      const tenantName = payment.tenants?.name || 'Unknown';
-
-      byProperty[propName] = (byProperty[propName] || 0) + payment.amount;
-      byTenant[tenantName] = (byTenant[tenantName] || 0) + payment.amount;
+    // Filter payments client-side (simpler than a separate DB query)
+    const payments = allPayments.filter(p => {
+      if (startDate && p.date < startDate) return false;
+      if (endDate   && p.date > endDate)   return false;
+      return true;
     });
 
-    return {
-      totalIncome,
-      transactionCount: data.length,
-      byProperty,
-      byTenant,
-      transactions: data
+    const expenses    = allExpenses; // already filtered by getExpenses(filters)
+    const reportData  = buildReportData({ properties, tenants, payments, expenses });
+
+    // Inject range into report data so the AI includes it
+    reportData.dateRange = rangeLabel;
+
+    const formattedText = await generateReportWithAI(type, reportData, landlord);
+
+    currentReportData = {
+      text:  formattedText,
+      type,
+      title: `${REPORT_TITLES[type]} — ${rangeLabel}`
     };
+
+    document.getElementById('reportDetailsContent').innerHTML = `
+      <div style="background:#f9f9f9; border:1px solid #e0e0e0; border-radius:6px;
+                  padding:20px; margin-bottom:20px; max-height:55vh; overflow-y:auto;">
+        <pre style="font-family:'Courier New',monospace; font-size:12.5px; line-height:1.8;
+                    white-space:pre-wrap; word-wrap:break-word; margin:0; color:#333;">
+${formattedText.replace(/</g,'<').replace(/>/g,'>')}
+        </pre>
+      </div>
+      <div style="display:flex; gap:10px; flex-wrap:wrap;">
+        <button onclick="downloadReportAsPDF()"
+                style="padding:11px 22px; background:#667eea; color:white; border:none;
+                       border-radius:5px; cursor:pointer; font-weight:bold;">
+          ⬇️ Download PDF
+        </button>
+        <button onclick="downloadReportAsTxt()"
+                style="padding:11px 22px; background:#4caf50; color:white; border:none;
+                       border-radius:5px; cursor:pointer; font-weight:bold;">
+          ⬇️ Download TXT
+        </button>
+        <button onclick="closeModal('reportDetailsModal')"
+                style="padding:11px 22px; background:#f0f0f0; color:#666; border:none;
+                       border-radius:5px; cursor:pointer;">
+          Close
+        </button>
+      </div>`;
+
   } catch (error) {
-    console.error('Error generating income report:', error);
-    throw error;
+    document.getElementById('reportDetailsContent').innerHTML = `
+      <div style="text-align:center; padding:40px; color:#f44336;">
+        <div style="font-size:40px; margin-bottom:16px;">❌</div>
+        <p style="font-size:14px;">Error: ${error.message}</p>
+        <button onclick="closeModal('reportDetailsModal')"
+                style="margin-top:16px; padding:10px 20px; background:#f0f0f0;
+                       border:none; border-radius:5px; cursor:pointer;">Close</button>
+      </div>`;
   }
 }
 
-async function generateExpenseReport(filters = {}) {
-  try {
-    const expenses = await getExpenses(filters);
+// ============================================
+// REPORTS — PDF & TXT DOWNLOAD
+// ============================================
 
-    // Calculate totals
-    const totalExpenses = expenses.reduce((sum, e) => sum + (e.amount || 0), 0);
-    const byCategory = {};
-    const byProperty = {};
+function downloadReportAsPDF() {
+  if (!currentReportData) return;
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
 
-    // Get property names for mapping
-    const properties = await getProperties();
-    const propertyMap = {};
-    properties.forEach(p => {
-      propertyMap[p.id] = p.name;
-    });
+  const margin     = 15;
+  const pageWidth  = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const usable     = pageWidth - margin * 2;
 
-    expenses.forEach(expense => {
-      // By category
-      byCategory[expense.category] = (byCategory[expense.category] || 0) + expense.amount;
+  // Purple header bar
+  doc.setFillColor(102, 126, 234);
+  doc.rect(0, 0, pageWidth, 26, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(15);
+  doc.text('KP-Rents', margin, 11);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.text(currentReportData.title, margin, 19);
+  doc.text(new Date().toLocaleDateString('en-ZA'), pageWidth - margin, 19, { align: 'right' });
 
-      // By property
-      const propName = expense.property_id ? propertyMap[expense.property_id] : 'General (All Properties)';
-      byProperty[propName] = (byProperty[propName] || 0) + expense.amount;
-    });
+  // Body
+  doc.setTextColor(50, 50, 50);
+  doc.setFont('courier', 'normal');
+  doc.setFontSize(8.5);
 
-    return {
-      totalExpenses,
-      transactionCount: expenses.length,
-      byCategory,
-      byProperty,
-      transactions: expenses
-    };
-  } catch (error) {
-    console.error('Error generating expense report:', error);
-    throw error;
-  }
-}
+  const lines = doc.splitTextToSize(currentReportData.text, usable);
+  let y = 34;
 
-async function generateAccountingReport(filters = {}) {
-  try {
-    const incomeReport = await generateIncomeReport(filters);
-    const expenseReport = await generateExpenseReport(filters);
-
-    const netProfit = incomeReport.totalIncome - expenseReport.totalExpenses;
-    const profitMargin = incomeReport.totalIncome > 0 
-      ? ((netProfit / incomeReport.totalIncome) * 100).toFixed(2) 
-      : 0;
-
-    return {
-      period: filters.month || 'All Time',
-      totalIncome: incomeReport.totalIncome,
-      totalExpenses: expenseReport.totalExpenses,
-      netProfit,
-      profitMargin,
-      incomeBreakdown: incomeReport.byProperty,
-      expenseBreakdown: expenseReport.byCategory,
-      propertyProfitability: await calculatePropertyProfitability(filters),
-      tenantPayments: incomeReport.byTenant,
-      allData: {
-        income: incomeReport,
-        expenses: expenseReport
-      }
-    };
-  } catch (error) {
-    console.error('Error generating accounting report:', error);
-    throw error;
-  }
-}
-
-async function calculatePropertyProfitability(filters = {}) {
-  try {
-    const properties = await getProperties();
-    const profitability = {};
-
-    for (const property of properties) {
-      const propertyFilters = { ...filters, propertyId: property.id };
-      const income = await generateIncomeReport(propertyFilters);
-      const expenses = await generateExpenseReport(propertyFilters);
-
-      profitability[property.name] = {
-        propertyId: property.id,
-        monthlyRent: property.monthly_rent,
-        totalIncome: income.totalIncome,
-        totalExpenses: expenses.totalExpenses,
-        netProfit: income.totalIncome - expenses.totalExpenses,
-        occupancyStatus: 'Occupied' // TODO: calculate from tenants table
-      };
+  lines.forEach(line => {
+    if (y > pageHeight - 14) {
+      doc.addPage();
+      y = margin;
     }
+    doc.text(line, margin, y);
+    y += 4.2;
+  });
 
-    return profitability;
-  } catch (error) {
-    console.error('Error calculating property profitability:', error);
-    return {};
+  // Footer on every page
+  const total = doc.internal.getNumberOfPages();
+  for (let i = 1; i <= total; i++) {
+    doc.setPage(i);
+    doc.setFontSize(7.5);
+    doc.setTextColor(170, 170, 170);
+    doc.setFont('helvetica', 'normal');
+    doc.text(
+      `KP-Rents  |  Generated ${new Date().toLocaleDateString('en-ZA')}  |  Page ${i} of ${total}`,
+      margin, pageHeight - 7
+    );
+  }
+
+  doc.save(`KP-Rents-${currentReportData.type}-${new Date().toISOString().split('T')[0]}.pdf`);
+}
+
+function downloadReportAsTxt() {
+  if (!currentReportData) return;
+  const blob = new Blob([currentReportData.text], { type: 'text/plain' });
+  const a    = document.createElement('a');
+  a.href     = URL.createObjectURL(blob);
+  a.download = `KP-Rents-${currentReportData.type}-${new Date().toISOString().split('T')[0]}.txt`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
+// helper for presets
+function setReportRange(preset) {
+  const now   = new Date();
+  const start = document.getElementById('reportStartDate');
+  const end   = document.getElementById('reportEndDate');
+  const fmt   = d => d.toISOString().split('T')[0];
+
+  end.value = fmt(now);
+
+  if (preset === 'thisMonth') {
+    start.value = fmt(new Date(now.getFullYear(), now.getMonth(), 1));
+  } else if (preset === 'last3') {
+    start.value = fmt(new Date(now.getFullYear(), now.getMonth() - 3, 1));
+  } else if (preset === 'thisYear') {
+    start.value = fmt(new Date(now.getFullYear(), 0, 1));
+  } else if (preset === 'all') {
+    start.value = '2000-01-01';
+    end.value   = fmt(now);
   }
 }
 
-async function generateTenantReport(tenantId, filters = {}) {
-  try {
-    const tenant = await getTenantById(tenantId);
-    const property = await getPropertyById(tenant.property_id);
-
-    const paymentFilters = { ...filters, tenantId };
-    const incomeReport = await generateIncomeReport(paymentFilters);
-
-    const expenses = await getExpenses({ propertyId: tenant.property_id });
-    const totalPropertyExpenses = expenses.reduce((sum, e) => sum + e.amount, 0);
-
-    // Allocate shared expenses proportionally if needed
-    const tenantShare = tenant.monthly_rent / property.monthly_rent;
-    const allocatedExpenses = totalPropertyExpenses * tenantShare;
-
-    return {
-      tenantName: tenant.name,
-      propertyName: property.name,
-      totalRentPaid: incomeReport.totalIncome,
-      assignedExpenses: allocatedExpenses,
-      netContribution: incomeReport.totalIncome - allocatedExpenses,
-      paymentHistory: incomeReport.transactions
-    };
-  } catch (error) {
-    console.error('Error generating tenant report:', error);
-    throw error;
-  }
-}
+// keep initializeReportsTab pointing to the loader
+function initializeReportsTab() { loadReportsTab(); }
 
 // ============================================
-// PDF EXPORT FUNCTION
+// EXPENSE MANAGEMENT UI FUNCTIONS
 // ============================================
-
-function generatePDFReport(reportData, reportType) {
-  try {
-    // Simple PDF generation (using jsPDF library - add to HTML: <script src="https://cdn.jsdelivr.net/npm/jspdf@2/dist/jspdf.umd.min.js"></script>)
-    // This is a placeholder - full implementation depends on jsPDF library
-
-    let pdfContent = `
-LANDLORD ACCOUNTING REPORT
-Generated: ${new Date().toLocaleDateString()}
-Report Type: ${reportType}
-
-=== SUMMARY ===
-`;
-
-    if (reportType === 'accounting') {
-      pdfContent += `
-Total Income: R ${reportData.totalIncome.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}
-Total Expenses: R ${reportData.totalExpenses.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}
-Net Profit: R ${reportData.netProfit.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}
-Profit Margin: ${reportData.profitMargin}%
-
-=== INCOME BREAKDOWN (by Property) ===
-`;
-      for (const [prop, amount] of Object.entries(reportData.incomeBreakdown)) {
-        pdfContent += `${prop}: R ${amount.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}\n`;
-      }
-
-      pdfContent += `\n=== EXPENSE BREAKDOWN (by Category) ===\n`;
-      for (const [category, amount] of Object.entries(reportData.expenseBreakdown)) {
-        pdfContent += `${category}: R ${amount.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}\n`;
-      }
-    }
-
-    // For now, return as text. In production, use jsPDF library
-    return pdfContent;
-  } catch (error) {
-    console.error('Error generating PDF:', error);
-    throw error;
-  }
-}
-
-// ============================================
-// CSV EXPORT FUNCTION
-// ============================================
-
-function generateCSVReport(reportData, reportType) {
-  try {
-    let csv = '';
-
-    if (reportType === 'accounting') {
-      csv = `Report Type,Accounting\nGenerated,${new Date().toISOString()}\n\n`;
-      csv += `Summary\nTotal Income,${reportData.totalIncome}\n`;
-      csv += `Total Expenses,${reportData.totalExpenses}\n`;
-      csv += `Net Profit,${reportData.netProfit}\n`;
-      csv += `Profit Margin,${reportData.profitMargin}%\n\n`;
-
-      csv += `Income by Property\n`;
-      for (const [prop, amount] of Object.entries(reportData.incomeBreakdown)) {
-        csv += `${prop},${amount}\n`;
-      }
-
-      csv += `\nExpenses by Category\n`;
-      for (const [category, amount] of Object.entries(reportData.expenseBreakdown)) {
-        csv += `${category},${amount}\n`;
-      }
-    } else if (reportType === 'transactions') {
-      csv = `Date,Type,Category,Amount,Property,Description\n`;
-      reportData.forEach(row => {
-        csv += `${row.date},${row.type},${row.category},${row.amount},${row.property},"${row.description}"\n`;
-      });
-    }
-
-    return csv;
-  } catch (error) {
-    console.error('Error generating CSV:', error);
-    throw error;
-  }
-}
-
-function downloadFile(content, filename, type) {
-  const element = document.createElement('a');
-  const file = new Blob([content], { type });
-  element.href = URL.createObjectURL(file);
-  element.download = filename;
-  document.body.appendChild(element);
-  element.click();
-  document.body.removeChild(element);
-}
-
 // ============================================
 // EXPENSE MANAGEMENT UI FUNCTIONS
 // ============================================
