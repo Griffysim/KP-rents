@@ -1,19 +1,23 @@
-let fetch;
-
-(async () => {
-  const nodeFetch = await import('node-fetch');
-  fetch = nodeFetch.default;
-})();
-
 const PPLX_URL = 'https://api.perplexity.ai/chat/completions';
 
 exports.handler = async (event) => {
   try {
+    console.log('Function invoked:', { httpMethod: event.httpMethod, path: event.path });
+
     if (event.httpMethod !== 'POST') {
       return { statusCode: 405, body: JSON.stringify({ error: 'Method Not Allowed' }) };
     }
 
     const body = JSON.parse(event.body || '{}');
+    console.log('Parsed body:', { tenantName: body.tenantName, propertyName: body.propertyName });
+
+    const PERPLEXITY_API_KEY = process.env.PERPLEXITY_API_KEY;
+    if (!PERPLEXITY_API_KEY) {
+      console.error('PERPLEXITY_API_KEY is not set in environment variables');
+      return { statusCode: 500, body: JSON.stringify({ error: 'Server misconfigured: PERPLEXITY_API_KEY not set' }) };
+    }
+
+    console.log('PERPLEXITY_API_KEY is set');
     const {
       tenantName,
       tenantEmail,
@@ -86,10 +90,11 @@ Please generate a professional invoice in plain text format that includes:
 Make it warm but professional, suitable for South African rental context.
 `;
 
+    console.log('Making request to Perplexity API...');
     const resp = await fetch(PPLX_URL, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${process.env.PERPLEXITY_API_KEY}`,
+        'Authorization': `Bearer ${PERPLEXITY_API_KEY}`,
         'Content-Type': 'application/json',
         'Accept': 'application/json'
       },
@@ -98,10 +103,13 @@ Make it warm but professional, suitable for South African rental context.
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt }
-        ]
+        ],
+        max_tokens: 1500,
+        temperature: 0.2
       })
     });
 
+    console.log('Perplexity response status:', resp.status);
     const data = await resp.json();
 
     if (!resp.ok) {
@@ -111,6 +119,12 @@ Make it warm but professional, suitable for South African rental context.
 
     const content = data.choices?.[0]?.message?.content ?? '';
 
+    if (!content) {
+      console.error('No content from Perplexity:', data);
+      return { statusCode: 500, body: JSON.stringify({ error: 'No invoice content generated' }) };
+    }
+
+    console.log('Invoice generated successfully');
     return {
       statusCode: 200,
       body: JSON.stringify({
@@ -121,10 +135,10 @@ Make it warm but professional, suitable for South African rental context.
     };
 
   } catch (err) {
-    console.error('Function error:', err);
+    console.error('Function error:', err.message, err.stack);
     return {
       statusCode: 500,
-      body: JSON.stringify({ error: err.message })
+      body: JSON.stringify({ error: err.message, stack: err.stack })
     };
   }
 };

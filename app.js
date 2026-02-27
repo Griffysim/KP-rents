@@ -5,7 +5,7 @@ const SUPABASE_URL = 'https://fjaxofsasorfbynqustd.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZqYXhvZnNhc29yZmJ5bnF1c3RkIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2Njg5OTk0NSwiZXhwIjoyMDgyNDc1OTQ1fQ.Y8AEhH3SHYz-BCCoTsJYLs6SdUg1tsUDG4OwLS4Ochs';
 const NETLIFY_FUNCTIONS_URL = '/.netlify/functions';
 // EmailJS configuration
-const EMAILJS_SERVICE_ID = 'service_vgzdei7';
+const EMAILJS_SERVICE_ID = 'service_aebc0e5';
 const EMAILJS_TEMPLATE_ID = 'template_fk1can9';
 // Supabase `utility_rates` single-row id (provided)
 const UTILITY_RATES_ROW_ID = 'eb9ddc23-4e79-4a5f-ad68-ae9ce40a6153';
@@ -454,8 +454,9 @@ async function populatePropertySelect() {
 // ============================================
 // PERPLEXITY API & EMAIL FUNCTIONS
 // ============================================
+
 async function generateInvoiceWithAI(payload) {
-  // Call the serverless function which calls Perplexity server-side
+  // Forward the payload to the serverless function which calls Perplexity.
   const res = await fetch(`${NETLIFY_FUNCTIONS_URL}/generate-invoice`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -472,25 +473,33 @@ async function generateInvoiceWithAI(payload) {
 }
 
 async function sendInvoiceEmail(payload) {
-  const { to, subject, body, tenantName, landlordName } = payload;
-
   try {
+    const { to, subject, body, tenantName, landlordName } = payload;
+    
+    const templateParams = {
+      to_email: to,
+      tenant_name: tenantName,
+      message: body,
+      landlord_name: landlordName
+    };
+    
+    console.log('📧 Sending email via EmailJS to:', to);
+    console.log('📧 Template params:', templateParams);
+    console.log('📧 Service ID:', EMAILJS_SERVICE_ID);
+    console.log('📧 Template ID:', EMAILJS_TEMPLATE_ID);
+    
     const result = await emailjs.send(
       EMAILJS_SERVICE_ID,
       EMAILJS_TEMPLATE_ID,
-      {
-        to_email: to,
-        subject: subject,
-        message: body,
-        tenant_name: tenantName,
-        landlord_name: landlordName
-      }
+      templateParams
     );
+    
     console.log('✅ Email sent:', result.status, result.text);
-    try { showAlert(`✅ Email sent to ${to}`); } catch (e) {}
+    try { showAlert(`✅ Email sent to ${to}`); } catch (e) { /* ignore */ }
     return result;
   } catch (error) {
     console.error('❌ EmailJS error:', error);
+    console.error('❌ Error message:', error.text || error.message);
     try { showAlert('❌ Failed to send email: ' + (error.text || error.message), 'danger'); } catch (e) {}
     throw new Error('Failed to send email: ' + (error.text || error.message));
   }
@@ -508,7 +517,9 @@ async function testSendInvoiceEmail() {
 
   try {
     await sendInvoiceEmail(payload);
+    // showAlert called inside sendInvoiceEmail on success
   } catch (err) {
+    // showAlert called inside sendInvoiceEmail on failure
     console.error('Test send failed:', err);
   }
 }
