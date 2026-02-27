@@ -2175,129 +2175,20 @@ async function loadExpensesList() {
   container.innerHTML = html;
 }
 
-// ============================================
-// REPORTING UI FUNCTIONS
-// ============================================
-
-async function loadReportsTab() {
-  const container = document.getElementById('reportsContainer');
-  if (!container) return;
-
-  container.innerHTML = `
-    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px;">
-      <div class="report-card" onclick="showAccountingReport()" style="padding: 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 8px; cursor: pointer; text-align: center;">
-        <h3>📊 Accounting Summary</h3>
-        <p>Income, Expenses & Net Profit</p>
-      </div>
-      
-      <div class="report-card" onclick="showIncomeReport()" style="padding: 20px; background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; border-radius: 8px; cursor: pointer; text-align: center;">
-        <h3>💰 Income Report</h3>
-        <p>By Property, By Tenant, By Date</p>
-      </div>
-      
-      <div class="report-card" onclick="showExpenseReport()" style="padding: 20px; background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white; border-radius: 8px; cursor: pointer; text-align: center;">
-        <h3>💸 Expense Report</h3>
-        <p>By Category, By Property, By Date</p>
-      </div>
-      
-      <div class="report-card" onclick="showPropertyReport()" style="padding: 20px; background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%); color: white; border-radius: 8px; cursor: pointer; text-align: center;">
-        <h3>🏠 Property Report</h3>
-        <p>Profitability & Occupancy</p>
-      </div>
-      
-      <div class="report-card" onclick="showTenantReport()" style="padding: 20px; background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); color: white; border-radius: 8px; cursor: pointer; text-align: center;">
-        <h3>👤 Tenant Report</h3>
-        <p>Payment History & Status</p>
-      </div>
-    </div>
-  `;
-}
+// Legacy reporting UI loader removed — use the updated `loadReportsTab()` defined earlier (with date range inputs)
 
 async function showAccountingReport() {
-  try {
-    const report = await generateAccountingReport();
-    openModal('reportDetailsModal');
-
-    let html = `
-      <h3>Accounting Summary Report</h3>
-      <div style="background: #f5f5f5; padding: 20px; border-radius: 8px; margin: 20px 0;">
-        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px;">
-          <div>
-            <strong>Total Income:</strong><br>
-            R ${report.totalIncome.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}
-          </div>
-          <div>
-            <strong>Total Expenses:</strong><br>
-            R ${report.totalExpenses.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}
-          </div>
-          <div style="background: #4caf50; color: white; padding: 10px; border-radius: 5px;">
-            <strong>Net Profit:</strong><br>
-            R ${report.netProfit.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}
-          </div>
-          <div style="background: #667eea; color: white; padding: 10px; border-radius: 5px;">
-            <strong>Profit Margin:</strong><br>
-            ${report.profitMargin}%
-          </div>
-        </div>
-      </div>
-
-      <h4>Income Breakdown (by Property)</h4>
-      <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
-        <tr style="background: #f5f5f5;">
-          <th style="padding: 10px; border: 1px solid #ddd; text-align: left;">Property</th>
-          <th style="padding: 10px; border: 1px solid #ddd; text-align: right;">Amount</th>
-        </tr>
-        ${Object.entries(report.incomeBreakdown).map(([prop, amount]) => `
-          <tr>
-            <td style="padding: 10px; border: 1px solid #ddd;">${prop}</td>
-            <td style="padding: 10px; border: 1px solid #ddd; text-align: right;">R ${amount.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}</td>
-          </tr>
-        `).join('')}
-      </table>
-
-      <h4>Expense Breakdown (by Category)</h4>
-      <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
-        <tr style="background: #f5f5f5;">
-          <th style="padding: 10px; border: 1px solid #ddd; text-align: left;">Category</th>
-          <th style="padding: 10px; border: 1px solid #ddd; text-align: right;">Amount</th>
-        </tr>
-        ${Object.entries(report.expenseBreakdown).map(([cat, amount]) => `
-          <tr>
-            <td style="padding: 10px; border: 1px solid #ddd;">${cat}</td>
-            <td style="padding: 10px; border: 1px solid #ddd; text-align: right;">R ${amount.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}</td>
-          </tr>
-        `).join('')}
-      </table>
-
-      <div style="margin-top: 20px; display: flex; gap: 10px;">
-        <button class="btn-secondary" onclick="downloadReportPDF('accounting')">📄 Download PDF</button>
-        <button class="btn-secondary" onclick="downloadReportCSV('accounting')">📊 Download CSV</button>
-      </div>
-    `;
-
-    document.getElementById('reportDetailsContent').innerHTML = html;
-  } catch (error) {
-    showAlert('❌ Error generating report: ' + error.message, 'danger');
-  }
+  // Use the unified generator which handles fetching and AI formatting
+  generateReport('accounting');
 }
 
 async function showIncomeReport() {
+  // Open the filter modal, but generate the income report using the unified generator
   openModal('reportFilterModal');
   document.getElementById('reportFilterTitle').textContent = 'Filter Income Report';
   document.getElementById('applyReportFilter').onclick = async () => {
-    const filterType = document.getElementById('filterType').value;
-    const filterValue = document.getElementById('filterValue').value;
-
-    let filters = {};
-    if (filterType === 'property' && filterValue) {
-      filters.propertyId = filterValue;
-    } else if (filterType === 'tenant' && filterValue) {
-      filters.tenantId = filterValue;
-    }
-
-    const report = await generateIncomeReport(filters);
-    displayIncomeReport(report);
     closeModal('reportFilterModal');
+    generateReport('income');
   };
 }
 
@@ -2334,19 +2225,8 @@ async function showExpenseReport() {
   openModal('reportFilterModal');
   document.getElementById('reportFilterTitle').textContent = 'Filter Expense Report';
   document.getElementById('applyReportFilter').onclick = async () => {
-    const filterType = document.getElementById('filterType').value;
-    const filterValue = document.getElementById('filterValue').value;
-
-    let filters = {};
-    if (filterType === 'category' && filterValue) {
-      filters.category = filterValue;
-    } else if (filterType === 'property' && filterValue) {
-      filters.propertyId = filterValue;
-    }
-
-    const report = await generateExpenseReport(filters);
-    displayExpenseReport(report);
     closeModal('reportFilterModal');
+    generateReport('expenses');
   };
 }
 
@@ -2390,43 +2270,8 @@ function displayExpenseReport(report) {
 }
 
 async function showPropertyReport() {
-  try {
-    const profitability = await calculatePropertyProfitability();
-    openModal('reportDetailsModal');
-
-    let html = `
-      <h3>Property Profitability Report</h3>
-      <table style="width: 100%; border-collapse: collapse;">
-        <thead>
-          <tr style="background: #f5f5f5;">
-            <th style="padding: 10px; border: 1px solid #ddd; text-align: left;">Property</th>
-            <th style="padding: 10px; border: 1px solid #ddd; text-align: right;">Income</th>
-            <th style="padding: 10px; border: 1px solid #ddd; text-align: right;">Expenses</th>
-            <th style="padding: 10px; border: 1px solid #ddd; text-align: right;">Net Profit</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${Object.entries(profitability).map(([propName, data]) => `
-            <tr>
-              <td style="padding: 10px; border: 1px solid #ddd;">${propName}</td>
-              <td style="padding: 10px; border: 1px solid #ddd; text-align: right;">R ${data.totalIncome.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}</td>
-              <td style="padding: 10px; border: 1px solid #ddd; text-align: right;">R ${data.totalExpenses.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}</td>
-              <td style="padding: 10px; border: 1px solid #ddd; text-align: right; background: ${data.netProfit >= 0 ? '#e8f5e9' : '#ffebee'};">R ${data.netProfit.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}</td>
-            </tr>
-          `).join('')}
-        </tbody>
-      </table>
-
-      <div style="margin-top: 20px; display: flex; gap: 10px;">
-        <button class="btn-secondary" onclick="downloadReportPDF('property')">📄 Download PDF</button>
-        <button class="btn-secondary" onclick="downloadReportCSV('property')">📊 Download CSV</button>
-      </div>
-    `;
-
-    document.getElementById('reportDetailsContent').innerHTML = html;
-  } catch (error) {
-    showAlert('❌ Error generating report: ' + error.message, 'danger');
-  }
+  // Use the unified generator for property summary
+  generateReport('properties');
 }
 
 async function showTenantReport() {
@@ -2447,54 +2292,11 @@ async function showTenantReport() {
 }
 
 async function displayTenantReport(tenantId) {
-  try {
-    const report = await generateTenantReport(tenantId);
-    closeModal('selectTenantModal');
-    openModal('reportDetailsModal');
-
-    let html = `
-      <h3>Tenant Report: ${report.tenantName}</h3>
-      <p><strong>Property:</strong> ${report.propertyName}</p>
-
-      <div style="background: #f5f5f5; padding: 20px; border-radius: 8px; margin: 20px 0; display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px;">
-        <div>
-          <strong>Total Rent Paid:</strong><br>
-          R ${report.totalRentPaid.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}
-        </div>
-        <div>
-          <strong>Assigned Expenses:</strong><br>
-          R ${report.assignedExpenses.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}
-        </div>
-        <div style="background: #4caf50; color: white; padding: 10px; border-radius: 5px; grid-column: 1 / -1;">
-          <strong>Net Contribution:</strong><br>
-          R ${report.netContribution.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}
-        </div>
-      </div>
-
-      <h4>Payment History</h4>
-      <table style="width: 100%; border-collapse: collapse;">
-        <tr style="background: #f5f5f5;">
-          <th style="padding: 10px; border: 1px solid #ddd; text-align: left;">Date</th>
-          <th style="padding: 10px; border: 1px solid #ddd; text-align: right;">Amount</th>
-        </tr>
-        ${report.paymentHistory.map(payment => `
-          <tr>
-            <td style="padding: 10px; border: 1px solid #ddd;">${payment.date}</td>
-            <td style="padding: 10px; border: 1px solid #ddd; text-align: right;">R ${payment.amount.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}</td>
-          </tr>
-        `).join('')}
-      </table>
-
-      <div style="margin-top: 20px; display: flex; gap: 10px;">
-        <button class="btn-secondary" onclick="downloadReportPDF('tenant')">📄 Download PDF</button>
-        <button class="btn-secondary" onclick="downloadReportCSV('tenant')">📊 Download CSV</button>
-      </div>
-    `;
-
-    document.getElementById('reportDetailsContent').innerHTML = html;
-  } catch (error) {
-    showAlert('❌ Error generating report: ' + error.message, 'danger');
-  }
+  // Tenant-specific report now reuses the unified generator (falls back to income listing)
+  closeModal('selectTenantModal');
+  // Note: detailed tenant-level allocation is not implemented in unified generator.
+  // For now generate an income report (you can refine to pass tenant filters later).
+  generateReport('income');
 }
 
 function downloadReportPDF(reportType) {
