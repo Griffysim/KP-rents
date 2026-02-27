@@ -1749,11 +1749,20 @@ ${sections[type]}`;
 
 async function generateReportWithAI(type, data, landlord) {
   const prompt = buildReportPrompt(type, data, landlord);
+  // Resolve Perplexity API key: prefer global `PERPLEXITY_API_KEY`, else check localStorage.
+  let key = (typeof PERPLEXITY_API_KEY !== 'undefined') ? PERPLEXITY_API_KEY : localStorage.getItem('PERPLEXITY_API_KEY');
+  if (!key) {
+    // Ask user for the key once and persist it locally for convenience
+    const entered = window.prompt('Perplexity API key not found. Enter your Perplexity API key (will be saved to localStorage):');
+    if (!entered) throw new Error('Perplexity API key is required to generate AI reports.');
+    localStorage.setItem('PERPLEXITY_API_KEY', entered);
+    key = entered;
+  }
 
   const response = await fetch('https://api.perplexity.ai/chat/completions', {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${PERPLEXITY_API_KEY}`,
+      'Authorization': `Bearer ${key}`,
       'Content-Type': 'application/json'
     },
     body: JSON.stringify({
