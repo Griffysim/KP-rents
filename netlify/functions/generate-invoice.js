@@ -63,8 +63,7 @@ exports.handler = async (event) => {
     const utilitiesLines = utilities.length > 0
       ? utilities
           .map((u) => `- ${u.name}: R ${Number(u.amount).toFixed(2)}`)
-          .join('
-')
+          .join('\n')
       : '- None';
 
     const userPrompt = `
