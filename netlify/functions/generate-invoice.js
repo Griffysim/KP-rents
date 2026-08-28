@@ -21,16 +21,18 @@ exports.handler = async (event) => {
       propertyName: body.propertyName
     });
 
-    const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
+    // Prefer a landlord-supplied key/model (from Settings > AI Setup), fall back to
+    // server-configured environment variables so the app keeps working out of the box.
+    const OPENROUTER_API_KEY = body.apiKey || process.env.OPENROUTER_API_KEY;
     const OPENROUTER_MODEL =
-      process.env.OPENROUTER_MODEL || 'nvidia/nemotron-3-nano-30b-a3b:free';
+      body.model || process.env.OPENROUTER_MODEL || 'nvidia/nemotron-3-nano-30b-a3b:free';
 
     if (!OPENROUTER_API_KEY) {
-      console.error('OPENROUTER_API_KEY is not set in environment variables');
+      console.error('No OpenRouter API key available (missing OPENROUTER_API_KEY env var and no key in request)');
       return {
         statusCode: 500,
         body: JSON.stringify({
-          error: 'Server misconfigured: OPENROUTER_API_KEY not set'
+          error: 'No OpenRouter API key configured. Add one in Settings > AI Setup, or set OPENROUTER_API_KEY in Netlify.'
         })
       };
     }
