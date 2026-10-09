@@ -1,0 +1,5 @@
+allowBuilds:
+  core-js: false
+  esbuild: true
+minimumReleaseAgeExclude:
+  - '@neon/config@1.8.6'

@@ -1,16 +1,43 @@
 {
-  "name": "ko-rents",
-  "version": "1.0.0",
-  "description": "AI-powered property management system for South African landlords",
+  "name": "kp-rents",
+  "version": "2.0.0",
   "private": true,
-  "main": "index.html",
+  "description": "Secure Neon-backed property management for independent landlords",
+  "type": "module",
+  "packageManager": "pnpm@11.25.0",
   "scripts": {
-    "build": "echo \"no build step needed\""
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -b --pretty false",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "api:dev": "neon dev",
+    "android:sync": "npm run build && npx cap sync android",
+    "android:apk:debug": "npm run build && npx cap sync android && cd android && ./gradlew assembleDebug"
   },
   "dependencies": {
-    "node-fetch": "^3.3.2",
-    "@sendgrid/mail": "^8.1.0"
+    "@capacitor/core": "^8.5.3",
+    "@neon/functions": "^0.8.0",
+    "@neondatabase/neon-js": "^0.7.0-beta",
+    "hono": "^4.11.8",
+    "jose": "^6.1.3",
+    "pg": "^8.16.3",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "zod": "^4.3.6"
   },
-  "author": "Karen Pepper",
-  "license": "MIT"
+  "devDependencies": {
+    "@capacitor/android": "^8.5.3",
+    "@capacitor/cli": "^8.5.3",
+    "@neon/config": "^1.8.6",
+    "@types/node": "^24.10.1",
+    "@types/pg": "^8.15.6",
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.1.1",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.1",
+    "vitest": "^4.0.16"
+  }
 }

@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">KP-Rents</string>
+    <string name="title_activity_main">KP-Rents</string>
+    <string name="package_name">com.kprents.app</string>
+    <string name="custom_url_scheme">com.kprents.app</string>
+</resources>
