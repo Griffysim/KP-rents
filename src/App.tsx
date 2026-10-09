@@ -1,6 +1,6 @@
 import { type FormEvent, useEffect, useMemo, useState } from 'react';
 import { ApiError, api } from './lib/api';
-import { authClient, makeOrganizationSlug } from './lib/auth';
+import { authClient, getOrCreateLandlordOrganization } from './lib/auth';
 import { runtimeConfig } from './lib/config';
 import { date, money, today } from './lib/format';
 import type { Expense, Invoice, Me, Message, Payment, Property, Reading, Tenant } from './lib/types';
@@ -32,7 +32,9 @@ export default function App() {
 
   const refresh = async () => {
     const result: any = await authClient.getSession();
-    const nextSession = result.data?.session ?? null;
+    const nextSession = result.data?.session
+      ? { ...result.data.session, user: result.data.user }
+      : null;
     setSession(nextSession);
     if (!nextSession || !runtimeConfig.isApiConfigured) {
       setMe(null);
@@ -150,10 +152,7 @@ function AccessSetup({ session, onReady, onSignOut }: { session: any; onReady: (
         await api.claimTenant();
         window.history.replaceState({}, '', window.location.pathname);
       } else {
-        const created: any = await authClient.organization.create({ name: `${displayName} — KP-Rents`, slug: makeOrganizationSlug(displayName) });
-        if (created.error) throw new Error(created.error.message);
-        const organizationId = created.data?.id;
-        if (!organizationId) throw new Error('Neon Auth did not return an organization id.');
+        const organizationId = await getOrCreateLandlordOrganization(displayName);
         await api.bootstrapLandlord({ displayName, organizationId });
       }
       await onReady();
