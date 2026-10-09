@@ -24,6 +24,9 @@ const configuredOrigins = new Set(
     .map((origin) => origin.trim())
     .filter(Boolean),
 );
+const openRouterApiKey = process.env.OPENROUTER_API_KEY?.trim();
+const defaultOpenRouterModel = process.env.OPENROUTER_MODEL?.trim() || 'openai/gpt-4.1-mini';
+const openRouterApiUrl = 'https://openrouter.ai/api/v1';
 
 const uuid = z.string().uuid();
 const date = z.string().date();
@@ -90,6 +93,14 @@ const expenseInput = z.object({
   description: optionalText(2000),
 });
 
+const aiSettingsInput = z.object({
+  model: z.string().trim().min(3).max(200).regex(/^[a-zA-Z0-9._/-]+(?::[a-zA-Z0-9._-]+)?$/).nullable(),
+});
+
+const aiReportInput = z.object({
+  focus: z.enum(['general', 'cashflow', 'expenses', 'occupancy']).default('general'),
+});
+
 type LandlordActor = {
   kind: 'landlord';
   userId: string;
@@ -143,6 +154,11 @@ function asJson<T>(value: T): T {
     'total',
     'utility_total',
     'additional_amount',
+    'monthly_contract_rent',
+    'collected_this_month',
+    'expenses_this_month',
+    'net_cashflow_this_month',
+    'open_invoice_total',
   ]);
   return Object.fromEntries(
     Object.entries(value as Record<string, unknown>).map(([key, entry]) => [
@@ -239,6 +255,135 @@ class ApiError extends Error {
   constructor(public readonly status: number, message: string) {
     super(message);
   }
+}
+
+type ReportSummary = {
+  generated_at: string;
+  portfolio: Record<string, unknown>;
+  cashflow: Record<string, unknown>;
+  openInvoices: Array<Record<string, unknown>>;
+  expensesByCategory: Array<Record<string, unknown>>;
+};
+
+function openRouterConfigurationError() {
+  return new ApiError(503, 'The AI assistant is not configured yet. Add OPENROUTER_API_KEY to the Neon Function environment.');
+}
+
+function openRouterFailure(status: number) {
+  if (status === 401 || status === 403) return new ApiError(503, 'The OpenRouter app key was rejected. Check the deployed function environment.');
+  if (status === 429) return new ApiError(429, 'OpenRouter is rate-limiting this request. Please wait a moment and try again.');
+  return new ApiError(502, 'OpenRouter could not complete this request. Your financial records were not changed.');
+}
+
+async function openRouterRequest(path: string, init: RequestInit) {
+  if (!openRouterApiKey) throw openRouterConfigurationError();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 25_000);
+  try {
+    const response = await fetch(`${openRouterApiUrl}${path}`, {
+      ...init,
+      signal: controller.signal,
+      headers: {
+        Authorization: `Bearer ${openRouterApiKey}`,
+        Accept: 'application/json',
+        ...(init.body ? { 'Content-Type': 'application/json' } : {}),
+        ...(process.env.OPENROUTER_SITE_URL ? { 'HTTP-Referer': process.env.OPENROUTER_SITE_URL } : {}),
+        ...(process.env.OPENROUTER_APP_NAME ? { 'X-OpenRouter-Title': process.env.OPENROUTER_APP_NAME } : {}),
+        ...init.headers,
+      },
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      console.warn('OpenRouter request failed', { status: response.status, path });
+      throw openRouterFailure(response.status);
+    }
+    return payload as Record<string, unknown>;
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw new ApiError(504, 'OpenRouter took too long to respond. Please try again.');
+    }
+    console.error('OpenRouter request failed', error);
+    throw new ApiError(502, 'The AI service is temporarily unavailable. Your financial records were not changed.');
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function generateAiText(model: string, system: string, prompt: string, maxTokens: number) {
+  const response = await openRouterRequest('/chat/completions', {
+    method: 'POST',
+    body: JSON.stringify({
+      model,
+      messages: [{ role: 'system', content: system }, { role: 'user', content: prompt }],
+      temperature: 0.2,
+      max_tokens: maxTokens,
+    }),
+  });
+  const content = (response.choices as Array<{ message?: { content?: unknown } }> | undefined)?.[0]?.message?.content;
+  if (typeof content !== 'string' || !content.trim()) {
+    throw new ApiError(502, 'OpenRouter returned no usable text. Please try a different model.');
+  }
+  return content.trim();
+}
+
+async function aiSettings(landlordId: string) {
+  const saved = await one<{ ai_model: string | null }>('SELECT ai_model FROM public.landlord_profiles WHERE id = $1', [landlordId]);
+  return { configured: Boolean(openRouterApiKey), model: saved?.ai_model ?? defaultOpenRouterModel };
+}
+
+async function getReportSummary(landlordId: string): Promise<ReportSummary> {
+  const [portfolio, cashflow, openInvoices, expensesByCategory] = await Promise.all([
+    one(
+      `SELECT
+        (SELECT count(*)::int FROM public.properties WHERE landlord_id = $1) AS property_count,
+        (SELECT count(*)::int FROM public.tenants WHERE landlord_id = $1 AND status = 'active') AS active_tenant_count,
+        (SELECT count(*)::int FROM public.properties p
+          WHERE p.landlord_id = $1
+            AND NOT EXISTS (SELECT 1 FROM public.tenants t WHERE t.property_id = p.id AND t.status IN ('invited', 'active'))) AS vacant_property_count,
+        (SELECT coalesce(sum(monthly_rent), 0) FROM public.tenants WHERE landlord_id = $1 AND status = 'active') AS monthly_contract_rent`,
+      [landlordId],
+    ),
+    one(
+      `SELECT
+        (SELECT coalesce(sum(amount), 0) FROM public.payments
+          WHERE landlord_id = $1 AND date_trunc('month', payment_date) = date_trunc('month', current_date)) AS collected_this_month,
+        (SELECT coalesce(sum(amount), 0) FROM public.expenses
+          WHERE landlord_id = $1 AND date_trunc('month', expense_date) = date_trunc('month', current_date)) AS expenses_this_month,
+        (SELECT coalesce(sum(amount), 0) FROM public.payments
+          WHERE landlord_id = $1 AND date_trunc('month', payment_date) = date_trunc('month', current_date))
+        - (SELECT coalesce(sum(amount), 0) FROM public.expenses
+          WHERE landlord_id = $1 AND date_trunc('month', expense_date) = date_trunc('month', current_date)) AS net_cashflow_this_month,
+        (SELECT coalesce(sum(total), 0) FROM public.invoices
+          WHERE landlord_id = $1 AND status IN ('draft', 'issued')) AS open_invoice_total`,
+      [landlordId],
+    ),
+    query(
+      `SELECT i.id, i.period_start, i.period_end, i.due_date, i.total, i.status, i.created_at,
+              t.name AS tenant_name, p.name AS property_name
+         FROM public.invoices i
+         JOIN public.tenants t ON t.id = i.tenant_id
+         JOIN public.properties p ON p.id = t.property_id
+        WHERE i.landlord_id = $1 AND i.status IN ('draft', 'issued')
+        ORDER BY i.due_date ASC, i.created_at DESC LIMIT 12`,
+      [landlordId],
+    ),
+    query(
+      `SELECT min(e.id::text) AS id, e.category, count(*)::int AS count, coalesce(sum(e.amount), 0) AS total
+         FROM public.expenses e
+        WHERE e.landlord_id = $1
+        GROUP BY e.category
+        ORDER BY total DESC, e.category ASC`,
+      [landlordId],
+    ),
+  ]);
+  return {
+    generated_at: new Date().toISOString(),
+    portfolio: portfolio ?? { property_count: 0, active_tenant_count: 0, vacant_property_count: 0, monthly_contract_rent: 0 },
+    cashflow: cashflow ?? { collected_this_month: 0, expenses_this_month: 0, net_cashflow_this_month: 0, open_invoice_total: 0 },
+    openInvoices,
+    expensesByCategory,
+  };
 }
 
 app.use('*', async (c, next) => {
@@ -438,6 +583,11 @@ app.get('/v1/dashboard', async (c) => {
     ),
   ]);
   return c.json({ data: { role: 'landlord', counts, properties, recentPayments, allTimeExpenses: expenses?.total ?? 0 } });
+});
+
+app.get('/v1/reports/summary', async (c) => {
+  const landlord = landlordOnly(getActor(c));
+  return c.json({ data: await getReportSummary(landlord.landlordId) });
 });
 
 app.get('/v1/properties', async (c) => {
@@ -730,6 +880,34 @@ app.post('/v1/invoices', async (c) => {
   return c.json({ data: invoice }, 201);
 });
 
+app.post('/v1/invoices/:id/ai-cover-note', async (c) => {
+  const landlord = landlordOnly(getActor(c));
+  const invoiceId = c.req.param('id');
+  if (!uuid.safeParse(invoiceId).success) return c.json({ error: { message: 'Invalid invoice id.' } }, 400);
+  const invoice = await one<{
+    tenant_name: string; property_name: string; unit_number: string | null; period_start: string;
+    period_end: string; due_date: string; total: number; display_name: string;
+  }>(
+    `SELECT t.name AS tenant_name, p.name AS property_name, p.unit_number,
+            i.period_start, i.period_end, i.due_date, i.total, lp.display_name
+       FROM public.invoices i
+       JOIN public.tenants t ON t.id = i.tenant_id
+       JOIN public.properties p ON p.id = t.property_id
+       JOIN public.landlord_profiles lp ON lp.id = i.landlord_id
+      WHERE i.id = $1 AND i.landlord_id = $2`,
+    [invoiceId, landlord.landlordId],
+  );
+  if (!invoice) return c.json({ error: { message: 'Invoice not found.' } }, 404);
+  const settings = await aiSettings(landlord.landlordId);
+  const content = await generateAiText(
+    settings.model,
+    'Write a short, warm, professional South African rental-invoice cover note. Do not calculate, change, or add monetary figures. Do not include bank details. Make no legal claims. Keep it under 150 words.',
+    `Draft a cover note for this already-issued invoice. Use only these facts:\nLandlord: ${invoice.display_name}\nTenant: ${invoice.tenant_name}\nProperty: ${invoice.property_name}${invoice.unit_number ? ` (${invoice.unit_number})` : ''}\nBilling period: ${invoice.period_start} to ${invoice.period_end}\nDue date: ${invoice.due_date}\nInvoice total: R ${Number(invoice.total).toFixed(2)}\nState that the attached invoice is the authoritative record.`,
+    280,
+  );
+  return c.json({ data: { content, model: settings.model } });
+});
+
 app.get('/v1/messages', async (c) => {
   const actor = getActor(c);
   const messages = await query(
@@ -870,6 +1048,67 @@ app.patch('/v1/settings', async (c) => {
       body.data.address ?? null, body.data.bankAccount ?? null],
   );
   return c.json({ data: settings });
+});
+
+app.get('/v1/ai/settings', async (c) => {
+  const landlord = landlordOnly(getActor(c));
+  return c.json({ data: await aiSettings(landlord.landlordId) });
+});
+
+app.put('/v1/ai/settings', async (c) => {
+  const landlord = landlordOnly(getActor(c));
+  const body = parsed(aiSettingsInput, await c.req.json());
+  if ('error' in body) return c.json({ error: body.error }, body.status as 400);
+  await one(
+    `UPDATE public.landlord_profiles SET ai_model = $2, updated_at = now()
+      WHERE id = $1 RETURNING id`,
+    [landlord.landlordId, body.data.model],
+  );
+  return c.json({ data: await aiSettings(landlord.landlordId) });
+});
+
+app.get('/v1/ai/models', async (c) => {
+  landlordOnly(getActor(c));
+  const response = await openRouterRequest('/models?output_modalities=text&sort=most-popular&limit=100', { method: 'GET' });
+  const source = Array.isArray(response.data) ? response.data as Array<Record<string, unknown>> : [];
+  const price = (value: unknown) => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? Number((parsed * 1_000_000).toFixed(4)) : undefined;
+  };
+  const models = source
+    .filter((item) => typeof item.id === 'string' && typeof item.name === 'string')
+    .map((item) => {
+      const pricing = item.pricing && typeof item.pricing === 'object' ? item.pricing as Record<string, unknown> : {};
+      return {
+        id: item.id,
+        name: item.name,
+        context_length: Number.isFinite(Number(item.context_length)) ? Number(item.context_length) : undefined,
+        prompt_price_per_million: price(pricing.prompt),
+        completion_price_per_million: price(pricing.completion),
+      };
+    });
+  return c.json({ data: models });
+});
+
+app.post('/v1/ai/reports', async (c) => {
+  const landlord = landlordOnly(getActor(c));
+  const body = parsed(aiReportInput, await c.req.json());
+  if ('error' in body) return c.json({ error: body.error }, body.status as 400);
+  const [summary, settings] = await Promise.all([getReportSummary(landlord.landlordId), aiSettings(landlord.landlordId)]);
+  const promptData = {
+    generated_at: summary.generated_at,
+    portfolio: summary.portfolio,
+    cashflow: summary.cashflow,
+    open_invoices: summary.openInvoices.map(({ total, status, due_date }) => ({ total, status, due_date })),
+    expenses_by_category: summary.expensesByCategory,
+  };
+  const content = await generateAiText(
+    settings.model,
+    'You are an analytical assistant for a South African rental portfolio. Explain only the supplied aggregate data in plain language. Do not invent figures, give legal or tax advice, name tenants, or recommend actions that require payment. Use concise headings and practical observations.',
+    `Prepare a ${body.data.focus} management brief from this JSON. Point out trends and data gaps, and clearly distinguish facts from suggestions.\n\n${JSON.stringify(promptData)}`,
+    900,
+  );
+  return c.json({ data: { content, model: settings.model } });
 });
 
 app.onError((error, c) => {

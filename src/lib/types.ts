@@ -105,3 +105,34 @@ export type Expense = {
   expense_date: string;
   description?: string | null;
 };
+
+export type AiSettings = {
+  configured: boolean;
+  model: string | null;
+};
+
+export type AiModel = {
+  id: string;
+  name: string;
+  context_length?: number;
+  prompt_price_per_million?: number;
+  completion_price_per_million?: number;
+};
+
+export type ReportSummary = {
+  generated_at: string;
+  portfolio: {
+    property_count: number;
+    active_tenant_count: number;
+    vacant_property_count: number;
+    monthly_contract_rent: number;
+  };
+  cashflow: {
+    collected_this_month: number;
+    expenses_this_month: number;
+    net_cashflow_this_month: number;
+    open_invoice_total: number;
+  };
+  openInvoices: Array<Invoice & { tenant_name?: string; property_name?: string }>;
+  expensesByCategory: Array<{ id: string; category: string; count: number; total: number }>;
+};

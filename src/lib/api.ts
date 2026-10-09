@@ -45,6 +45,7 @@ export const api = {
   createPayment: (body: unknown) => request('/payments', { method: 'POST', body: JSON.stringify(body) }),
   invoices: () => request<unknown[]>('/invoices'),
   createInvoice: (body: unknown) => request('/invoices', { method: 'POST', body: JSON.stringify(body) }),
+  invoiceCoverNote: (id: string) => request<{ content: string; model: string }>(`/invoices/${id}/ai-cover-note`, { method: 'POST' }),
   messages: () => request<unknown[]>('/messages'),
   createMessage: (body: unknown) => request('/messages', { method: 'POST', body: JSON.stringify(body) }),
   resolveMessage: (id: string, resolved: boolean) => request(`/messages/${id}/resolution`, { method: 'PATCH', body: JSON.stringify({ resolved }) }),
@@ -55,4 +56,9 @@ export const api = {
   createCategory: (body: unknown) => request('/categories', { method: 'POST', body: JSON.stringify(body) }),
   settings: () => request<unknown>('/settings'),
   updateSettings: (body: unknown) => request('/settings', { method: 'PATCH', body: JSON.stringify(body) }),
+  reportSummary: () => request<unknown>('/reports/summary'),
+  aiSettings: () => request<unknown>('/ai/settings'),
+  updateAiSettings: (body: { model: string | null }) => request('/ai/settings', { method: 'PUT', body: JSON.stringify(body) }),
+  aiModels: () => request<unknown[]>('/ai/models'),
+  generateAiReport: (body: { focus: string }) => request<{ content: string; model: string }>('/ai/reports', { method: 'POST', body: JSON.stringify(body) }),
 };
