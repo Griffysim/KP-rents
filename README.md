@@ -10,7 +10,7 @@ KP-Rents is a secure property-management app for independent landlords. It uses 
 | Tenant access | A landlord creates a tenant record and sends a Neon Auth organization invitation. The tenant creates their own password, verifies their email, accepts the invitation, and only then can access their tenant portal. |
 | Data API | `functions/api.ts` verifies short-lived Neon Auth JWTs against the injected JWKS before running parameterized PostgreSQL queries. |
 | Portfolio data | Properties, tenant records, payments, utility rates/readings, invoices, messages, expense categories, and expenses are defined in `db/0001_kp_rents_initial.sql`. |
-| Android path | The Vite build is wrapped by Capacitor and uses Android's `https://localhost` origin, which is trusted by Neon Auth. |
+| Android path | Capacitor serves the bundled Vite build through the trusted production web hostname, so tenant invitation emails route to the public app instead of an unreachable device-local address. |
 
 ## Security model
 
@@ -35,7 +35,7 @@ Both public service URLs are supplied in `.env.example`, including the deployed 
 3. Ensure `neon.ts` contains `auth: true`, then run `neon deploy`. This deploys the `kprentsapi` function and injects the database and Auth verification environment variables into it.
 4. Copy the deployed function’s public URL into `VITE_KP_RENTS_API_URL` only when deploying a separate branch or Function. The production fallback is already included in the app configuration.
 5. In Neon Auth, enable email/password authentication with **required email verification**. Enable the Organization plugin invitation email option.
-6. Add the exact production web frontend origin as a Neon Auth trusted domain. `https://localhost` is configured for the Android Capacitor runtime.
+6. Add the exact production web frontend origin as a Neon Auth trusted domain. The Android Capacitor runtime uses this canonical hostname for its bundled app assets so invitation links resolve to the public invitation route.
 7. For production delivery, configure a verified custom email provider in Neon Auth and send a test invitation before inviting real tenants.
 8. Set the function’s `ALLOWED_ORIGINS` environment variable to the final frontend origin (and any intentional preview origin) after the host domain is known.
 
